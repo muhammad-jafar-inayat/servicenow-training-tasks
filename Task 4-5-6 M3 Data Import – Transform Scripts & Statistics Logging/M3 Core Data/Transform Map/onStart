@@ -1,0 +1,26 @@
+(function runTransformScript(source, map, log, target, /*undefined onStart*/ ) {
+
+    var STATS = 'x_1849621_m3_use_0_statistics_table';
+
+    var st = new GlideRecord(STATS);
+    st.initialize();
+
+    // Save import set information
+    st.setValue('import_set_number', import_set.number);
+    //st.setValue('import_sys_id', map.name);
+
+    // Time start
+    st.setValue('import_started', new GlideDateTime());
+
+    // Initialize counters
+    st.setValue('total_fetched', 0);
+    st.setValue('roles_inserted', 0);
+    st.setValue('divisions_inserted', 0);
+    st.setValue('functions_inserted', 0);
+    st.setValue('permissions_inserted', 0);
+    st.setValue('m2m_inserted', 0);
+
+    var statsSysId = st.insert();
+   
+
+})(source, map, log, target);
