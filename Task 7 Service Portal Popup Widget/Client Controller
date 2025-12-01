@@ -1,0 +1,49 @@
+api.controller = function ($scope) {
+    var c = this;
+
+    // ================================
+    // ROLE FROM PARENT WIDGET (REAL)
+    // ================================
+    $scope.roleSysId = c.data.roleSysId ;
+
+    // Pagination
+    $scope.currentPage = 1;
+    $scope.pageSize = 10;
+	
+	  $scope.numberOfPages = Math.ceil(c.data.total / $scope.pageSize);
+
+    function loadPage() {
+        c.server.get({
+            page: $scope.currentPage,
+            pageSize: $scope.pageSize,
+            role_sys_id: $scope.roleSysId
+        }).then(function (resp) {
+
+            console.log("SERVER RESPONSE:", resp.data);
+
+            $scope.displayData = resp.data.tableRecord || [];
+            $scope.total = resp.data.total || 0;
+            $scope.error = resp.data.error;
+
+            
+        });
+    }
+
+    $scope.next = function () {
+        if ($scope.currentPage < $scope.numberOfPages) {
+            $scope.currentPage++;
+            loadPage();
+        }
+    };
+
+    $scope.prev = function () {
+        if ($scope.currentPage > 1) {
+            $scope.currentPage--;
+            loadPage();
+        }
+    };
+
+    // Load first page
+    loadPage();
+};
+
