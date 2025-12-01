@@ -1,0 +1,59 @@
+//Record Producer Script -> Event -> Script Action
+//Business Rule to prevent clouser
+
+// Record Producer Script
+(function() {
+
+    current.short_description = producer.short_description;
+    current.caller_id = gs.getUserID();
+
+    // Fire event so that child creation happens AFTER parent insert
+    gs.eventQueue(
+        "x_1849621_m3_use_0.create.child.incident",   // your event name
+        current
+    );
+
+})();
+
+//  Script Action
+
+(function(parent) {
+
+    function createChild() {
+        var child = new GlideRecord('incident');
+        child.initialize();
+
+        child.short_description = parent.short_description;
+        child.description = "Child incident created automatically";
+       child.parent_incident = parent.sys_id;
+        child.caller_id = parent.caller_id;
+
+        child.insert();
+    }
+
+    createChild(); // 1st child
+    createChild(); // 2nd child
+
+})(current);
+
+//Business Rule
+(function executeRule(current, previous) {
+
+    // Run only when parent is trying to close
+    if (current.state != 7)
+        return;
+
+    // Check children that are NOT closed
+    var child = new GlideRecord('incident');
+    child.addQuery('parent_incident', current.sys_id);
+    child.addQuery('state', '!=', 7);
+    child.query();
+
+    if (child.next()) {
+        gs.addErrorMessage(
+            "Cannot close parent incident because child incident " + child.number + " is still open."
+        );
+        current.setAbortAction(true);
+    }
+
+})(current, previous);
