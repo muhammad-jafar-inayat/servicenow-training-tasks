@@ -1,0 +1,34 @@
+(function() {
+
+    var inc = new GlideRecord('incident');
+    inc.initialize();
+
+    var skip = [
+        'number', 'sys_id', 'sys_updated_on', 'sys_created_on',
+        'sys_created_by', 'sys_updated_by', 'task_effective_number',
+        'sys_mod_count', 'sys_tags', 'sys_class_name'
+    ];
+
+    var ritmFields = current.getFields(); // <-- GET ONLY RITM FIELDS
+
+    for (var i = 0; i < ritmFields.size(); i++) {
+
+        var field = ritmFields.get(i).getName();
+
+        if (skip.indexOf(field) >= 0)
+            continue;
+
+        if (inc.isValidField(field)) {
+            inc.setValue(field, current.getValue(field));  // <-- REAL FIX
+        }
+    }
+
+    // RITM → Incident specific
+    if (current.requested_for)
+        inc.caller_id = current.requested_for;
+
+    var incID = inc.insert();
+
+    action.setRedirectURL(inc);
+
+})();
