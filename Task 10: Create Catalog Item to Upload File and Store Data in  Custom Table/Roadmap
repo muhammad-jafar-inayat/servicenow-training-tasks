@@ -1,0 +1,31 @@
+// Catalog Item Business Rule -> Schedule Import Set (It'll auto trigger datasource, import set)
+// Create the Scheduled Import Set, Data Source, and Transform Script first, and then link them together.
+
+//Catalog Item Business Rule
+
+(function executeRule(current, previous) {
+   
+    var SPECIFIC_CAT_ITEM = "30d32fdbc35132108d41b1fdd4013140";  
+
+    if (current.cat_item != SPECIFIC_CAT_ITEM) {
+        return; // stop execution
+    }
+    // Copy attachment from RITM to the Data Source
+    var attach = new GlideSysAttachment();
+    var attachCopy = attach.copy(
+        "sc_req_item",
+        current.getUniqueValue(),
+        "sys_data_source",
+        "a1476397c39132108d41b1fdd40131e1"
+    );
+
+    if (attachCopy) {
+
+        // Trigger the scheduled import set
+        var rec = new GlideRecord("scheduled_import_set");
+        if (rec.get("adc9af5bc39132108d41b1fdd4013149")) {
+            gs.executeNow(rec);
+        }
+    }
+
+})(current, previous);
