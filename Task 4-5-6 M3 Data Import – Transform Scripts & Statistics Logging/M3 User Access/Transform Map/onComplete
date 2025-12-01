@@ -1,0 +1,13 @@
+(function runTransformScript(source, map, log, target /*undefined onStart*/ ) {
+    // ---- Load stats row for this import set ----
+    var stats = new GlideRecord("x_1849621_m3_use_0_statistics_table");
+    stats.addQuery('import_set_number', import_set.number);
+    stats.query();
+
+    if (stats.next()) {
+        stats.setValue('import_completed', new GlideDateTime());
+        stats.update();
+    }
+
+
+})(source, map, log, target);
