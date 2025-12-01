@@ -1,0 +1,184 @@
+(function runTransformScript(source, map, log, target) {
+
+    // --- Table Definitions ---
+    var TABLES = {
+        m3_access: 'x_1849621_m3_use_0_m3_access',
+        m3_roles: 'x_1849621_m3_use_0_m3_roles',
+        sys_user: 'sys_user'
+    };
+    var stats;
+    (function loadStats() {
+        stats = new GlideRecord("x_1849621_m3_use_0_statistics_table");
+        stats.addQuery('import_set_number', import_set.number);
+        stats.query();
+        if (!stats.next()) {
+            gs.warn("Stats record NOT found for Import Set: " + source.sys_import_set);
+            stats = null;
+        }
+    })();
+
+    // ----------- STATS HELPER ---------------
+    function inc(fieldName) {
+        if (!stats) return;
+        var current = parseInt(stats.getValue(fieldName)) || 0;
+        stats.setValue(fieldName, current + 1);
+        stats.update();
+    }
+
+    // Always count total fetched rows
+    inc('total_fetched');
+
+
+    // --- Helper: Proper Case Conversion ---
+    function toProperCase(str) {
+        if (!str) return '';
+        return str
+            .replace(/\s+/g, ' ') // remove extra spaces
+            .trim()
+            .split(/[ ._-]+/)
+            .map(function(part) {
+                return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+            })
+            .join(' ');
+    }
+
+    // --- Helper: Proper Case for Email Format ---
+    function toProperCaseEmail(str) {
+        if (!str) return '';
+        return str
+            .replace(/\s+/g, ' ')
+            .trim()
+            .split(/[ ._-]+/)
+            .map(function(part) {
+                return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+            })
+            .join('.') + '@example.com';
+    }
+
+    // --- Helper: Find sys_user record (case-insensitive by user_name or name) ---
+    function findSysUser(userName) {
+        if (!userName) return null;
+        userName = toProperCase(userName.trim());
+        var gr = new GlideRecord(TABLES.sys_user);
+        gr.addEncodedQuery('user_name=' + userName + '^ORname=' + userName); //gr.addEncodedQuery('user_nameLIKE' + userName + '^ORnameLIKE' + userName);
+        gr.query();
+        return gr.next() ? gr : null;
+    }
+
+    // --- Helper: Create new sys_user ---
+    function createSysUser(userName, managerSysId) {
+        if (!userName) return null;
+
+        var properName = toProperCase(userName);
+        var email = toProperCaseEmail(userName);
+
+        var newUser = new GlideRecord(TABLES.sys_user);
+        newUser.initialize();
+        newUser.setValue('user_name', properName);
+        newUser.setValue('name', properName);
+        newUser.setValue('email', email);
+        if (managerSysId) newUser.setValue('manager', managerSysId);
+
+        var sysId = newUser.insert();
+        inc('sys_user_inserted');
+        gs.info('🆕 Created new sys_user: ' + properName + ' (' + sysId + ')');
+        return sysId;
+    }
+
+    // --- Helper: Get or Create Role ---
+    function getOrCreateRole(roleName, roleDesc) {
+        if (!roleName) return '';
+        roleName = roleName.trim();
+        var role = new GlideRecord(TABLES.m3_roles);
+        role.addQuery('name', roleName);
+        role.query();
+        if (role.next()) return role.getUniqueValue();
+
+        role.initialize();
+        role.setValue('name', roleName);
+        if (roleDesc) role.setValue('description', roleDesc.trim());
+        var id = role.insert();
+        inc('roles_inserted');
+        gs.info('✅ Created new M3 Role: ' + roleName);
+        return id;
+    }
+
+    // --- Step 1: Normalize imported names ---
+    var userName = toProperCase((source.u_user_name || '').trim());
+    var managerName = toProperCase((source.u_manager || '').trim());
+
+    // --- Step 2: Find or Create Manager ---
+    var managerSysId = '';
+    if (managerName) {
+        var managerRec = findSysUser(managerName);
+        if (managerRec) {
+            managerSysId = managerRec.getUniqueValue();
+            gs.info('👤 Manager found: ' + managerName);
+        } else {
+            managerSysId = createSysUser(managerName, null);
+            gs.info('👤 Manager created: ' + managerName);
+        }
+    }
+
+    // --- Step 3: Find or Create Employee/User ---
+    var userRec = findSysUser(userName);
+    var employeeSysId = '';
+
+    if (userRec) {
+        employeeSysId = userRec.getUniqueValue();
+        gs.info('✅ sys_user found for: ' + userName);
+    } else {
+        employeeSysId = createSysUser(userName, managerSysId);
+        gs.info('🆕 sys_user created for: ' + userName);
+    }
+
+    // --- Step 4: Get or Create Role ---
+    var roleSysId = getOrCreateRole(source.u_m3_role, source.u_m3_role_desc);
+
+    // --- Step 5: Find or Create M3 Access Record ---
+
+    var access = new GlideRecord(TABLES.m3_access);
+    access.addQuery('user', employeeSysId);
+    access.query();
+
+    var record;
+    var isNewAccess = false;
+
+    if (access.next()) {
+        record = access;
+        gs.info('🔄 Updating existing M3 Access for: ' + userName);
+    } else {
+        record = new GlideRecord(TABLES.m3_access);
+        record.initialize();
+        record.setValue('sys_class_name', TABLES.m3_access);
+        isNewAccess = true; // <<<< IMPORTANT
+    }
+
+    // --- Step 6: Set fields ---
+    record.setValue('user', employeeSysId);
+    record.setValue('current', true);
+
+    if (managerSysId) {
+        record.setValue('manager', managerSysId);
+    }
+
+    // --- Step 7: Merge roles ---
+    var existingRoles = (record.getValue('m3_roles') || '').split(',');
+    if (roleSysId && existingRoles.indexOf(roleSysId) === -1) {
+        existingRoles.push(roleSysId);
+    }
+    record.setValue('m3_roles', existingRoles.filter(Boolean).join(','));
+
+    // --- Step 8: Save record ---
+    if (isNewAccess) {
+        record.insert();
+        inc('m3_access_inserted'); // <<<< COUNTER FINALLY WORKS
+        gs.info('✅ Created new M3 Access for: ' + userName);
+    } else {
+        record.update();
+        gs.info('Updated M3 Access');
+    }
+
+    ignore = true;
+
+})(source, map, log, target);
