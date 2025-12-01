@@ -1,0 +1,166 @@
+(function runTransformScript(source, map, log, target) {
+    // --- Table Mapping (Scoped App) ---
+    var TABLES = {
+        'division': 'x_1849621_m3_use_0_m3_division',
+        'function': 'x_1849621_m3_use_0_m3_functions',
+        'role': 'x_1849621_m3_use_0_m3_roles',
+        'permission': 'x_1849621_m3_use_0_m3_permissions',
+        'm2m': 'x_1849621_m3_use_0_m2m'
+    };
+
+    var stats;
+    (function loadStats() {
+        stats = new GlideRecord("x_1849621_m3_use_0_statistics_table");
+        stats.addQuery('import_set_number', import_set.number);
+        stats.query();
+        if (!stats.next()) {
+            gs.warn("Stats record NOT found for Import Set: " + source.sys_import_set);
+            stats = null;
+        }
+    })();
+
+    // ----------- STATS HELPER ---------------
+    function inc(fieldName) {
+        if (!stats) return;
+        var current = parseInt(stats.getValue(fieldName)) || 0;
+        stats.setValue(fieldName, current + 1);
+        stats.update();
+    }
+
+    // Always count total fetched rows
+    inc('total_fetched');
+
+    // --- Helper: Convert Y/N → Boolean ---
+    function ynToBool(v) {
+        if (!v) return false;
+        v = ('' + v).toUpperCase().trim();
+        return (v === 'Y' || v === 'YES' || v === 'TRUE');
+    }
+
+    // --- Helper: Get or Create Simple Record ---
+    function getOrCreateSimple(table, field, value, descField, descValue, statField) {
+        if (!value) return '';
+
+        var gr = new GlideRecord(table);
+        gr.addQuery(field, value);
+        gr.query();
+        if (gr.next()) return gr.getUniqueValue();
+
+        // CREATE NEW
+        gr.initialize();
+        gr.setValue(field, value);
+        if (descField && descValue)
+            gr.setValue(descField, descValue);
+
+        var id = gr.insert();
+
+        gs.info('✅ Created new record in ' + table + ': ' + value);
+
+        // stats update
+        if (statField) inc(statField);
+
+        return id;
+    }
+
+    // --- Step 1: Create/Get Related Records ---
+    var funcId = '';
+    var divId = '';
+    var roleId = '';
+
+    if (source.u_function)
+        funcId = getOrCreateSimple(TABLES.function, 'name', source.u_function,
+            'description', source.u_function_desc,
+            'functions_inserted');
+
+    if (source.u_division)
+        divId = getOrCreateSimple(TABLES.division, 'name', source.u_division,
+            'description', '',
+            'divisions_inserted');
+
+    if (source.u_m3_role)
+        roleId = getOrCreateSimple(TABLES.role, 'name', source.u_m3_role,
+            'description', source.u_role_desc,
+            'roles_inserted');
+
+    // --- Step 2: Convert Y/N → Boolean ---
+    var sel = ynToBool(source.u_select);
+    var chg = ynToBool(source.u_change);
+    var cpy = ynToBool(source.u_copy);
+    var del = ynToBool(source.u_delete);
+    var dsp = ynToBool(source.u_display);
+
+    // --- Step 3: Create or Reuse Permission ---
+    var perm = new GlideRecord(TABLES.permission);
+
+    if (funcId) perm.addQuery('m3_function', funcId);
+    else perm.addNullQuery('m3_function');
+
+    if (divId) perm.addQuery('m3_divison', divId);
+    else perm.addNullQuery('m3_divison');
+
+    perm.addQuery('select', sel);
+    perm.addQuery('change', chg);
+    perm.addQuery('copy', cpy);
+    perm.addQuery('delete', del);
+    perm.addQuery('display', dsp);
+    perm.query();
+
+    var permId = '';
+    if (perm.next()) {
+        permId = perm.getUniqueValue();
+        gs.info('⚠️ Existing permission found: ' + permId);
+    } else {
+        perm.initialize();
+        if (funcId) perm.setValue('m3_function', funcId);
+        if (divId) perm.setValue('m3_divison', divId);
+
+        perm.setValue('select', sel);
+        perm.setValue('change', chg);
+        perm.setValue('copy', cpy);
+        perm.setValue('delete', del);
+        perm.setValue('display', dsp);
+
+        permId = perm.insert();
+        gs.info('✅ Created Permission: ' + permId);
+
+        // stats update
+        inc('permissions_inserted');
+    }
+
+    // --- Step 4: Create M2M ---
+    if (!roleId && !permId) {
+        gs.info('⚠️ Skipped M2M creation — both Role and Permission missing.');
+    } else {
+        var m2m = new GlideRecord(TABLES.m2m);
+
+        if (roleId)
+            m2m.addQuery('m3_role', roleId);
+        else
+            m2m.addNullQuery('m3_role');
+
+        if (permId)
+            m2m.addQuery('m3_permission', permId);
+        else
+            m2m.addNullQuery('m3_permission');
+
+        m2m.query();
+
+        if (m2m.next()) {
+            gs.info('⚠️ Existing M2M found — skipping.');
+        } else {
+            m2m.initialize();
+            if (roleId) m2m.setValue('m3_role', roleId);
+            if (permId) m2m.setValue('m3_permission', permId);
+            m2m.insert();
+
+            gs.info('✅ Created M2M record');
+
+            // stats update
+            inc('m2m_inserted');
+        }
+    }
+
+    // --- Step 5: Skip target table creation ---
+    ignore = true;
+
+})(source, map, log, target);
