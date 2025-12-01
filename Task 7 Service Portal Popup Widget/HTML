@@ -1,1 +1,62 @@
+<div class="modal-body" tabindex="-1">
+
+  <h4 class="text-primary mb-3">
+    Permissions ({{total}})
+  </h4>
+
+  <div ng-if="error" class="alert alert-danger">{{error}}</div>
+
+  <table class="table table-bordered table-striped" ng-if="displayData.length">
+    <thead>
+      <tr>
+        <th>M3 Function</th>
+        <th>M3 Division</th>
+        <th>Select</th>
+        <th>Change</th>
+        <th>Delete</th>
+        <th>Copy</th>
+        <th>Display</th>
+      </tr>
+    </thead>
+
+    <tbody>
+      <tr ng-repeat="perm in displayData">
+        <td>{{perm.m3_function}}</td>
+        <td>{{perm.m3_divison}}</td>
+
+        <td><i class="fa" ng-class="{'fa-check text-success': perm.select, 'fa-times text-danger': !perm.select}"></i></td>
+        <td><i class="fa" ng-class="{'fa-check text-success': perm.change, 'fa-times text-danger': !perm.change}"></i></td>
+        <td><i class="fa" ng-class="{'fa-check text-success': perm.delete, 'fa-times text-danger': !perm.delete}"></i></td>
+        <td><i class="fa" ng-class="{'fa-check text-success': perm.copy, 'fa-times text-danger': !perm.copy}"></i></td>
+        <td><i class="fa" ng-class="{'fa-check text-success': perm.display, 'fa-times text-danger': !perm.display}"></i></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div ng-if="!displayData.length && !error" class="alert alert-warning">
+    No permissions found.
+  </div>
+
+  <!-- PAGINATION -->
+  <div class="text-center mt-3">
+
+    <button class="btn btn-primary"
+            ng-disabled="currentPage == 1"
+            ng-click="prev()">
+      Previous
+    </button>
+
+    <span class="pageNum mx-2">
+      Page {{currentPage}} of {{numberOfPages}}
+    </span>
+
+    <button class="btn btn-primary"
+            ng-disabled="currentPage >= numberOfPages"
+            ng-click="next()">
+      Next
+    </button>
+
+  </div>
+
+</div>
 
