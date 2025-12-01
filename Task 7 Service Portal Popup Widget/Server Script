@@ -1,0 +1,53 @@
+(function () {
+
+    data.tableRecord = [];
+    if (!input) input = {};
+    gs.info("POPUP SERVER: RAW INPUT = " + JSON.stringify(input));
+
+    data.roleSysId = input.role_sys_id;   // RECEIVES MANUAL VALUE
+	  var roleSysId =data.roleSysId;
+    var page = parseInt(input.page, 10) || 1;
+    var pageSize = parseInt(input.pageSize, 10) || 10;
+	  
+
+    if (!roleSysId) {
+        data.error = "No role_sys_id provided";
+        return;
+    }
+
+    // COUNT TOTAL
+    var agg = new GlideAggregate('x_1849621_m3_use_0_m2m');
+    agg.addQuery('m3_role', roleSysId);
+    agg.addAggregate('COUNT');
+    agg.query();
+    agg.next();
+    data.total = parseInt(agg.getAggregate('COUNT'), 10);
+
+    var rowStart = (page - 1) * pageSize;
+    var rowEnd = rowStart + pageSize;
+
+    // FETCH PAGE
+    var gr = new GlideRecord('x_1849621_m3_use_0_m2m');
+    gr.addQuery('m3_role', roleSysId);
+    gr.orderBy('sys_created_on');
+    gr.chooseWindow(rowStart, rowEnd);
+    gr.query();
+
+    while (gr.next()) {
+
+        var perm = new GlideRecord('x_1849621_m3_use_0_m3_permissions');
+        if (!perm.get(gr.m3_permission))
+            continue;
+
+        data.tableRecord.push({
+            m3_function: perm.getDisplayValue('m3_function'),
+            m3_divison: perm.getDisplayValue('m3_divison'),
+            select: perm.getValue('select') == '1',
+            change: perm.getValue('change') == '1',
+            delete: perm.getValue('delete') == '1',
+            copy: perm.getValue('copy') == '1',
+            display: perm.getValue('display') == '1'
+        });
+    }
+
+})();
